@@ -30,7 +30,7 @@
     "Storefront API"
   ],
   "dependencies": {
-    "@shopify/shopify-api": "git+https://github.com/redbrainduncan/shopify-api-js.git",
+    "@shopify/shopify-api": "git+https://github.com/redbrainduncan/shopify-api-js.git#5ebe399c87041879e9e638a4e5c2ebda3373b01f",
     "@shopify/shopify-app-session-storage": "^1.1.1",
     "@shopify/shopify-app-session-storage-memory": "^1.0.4",
     "cookie-parser": "^1.4.6",
