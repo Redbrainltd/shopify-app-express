@@ -1,29 +1,28 @@
-import express, {Request, Response} from 'express';
-import {AddHandlersParams, DeliveryMethod, Shopify} from '@shopify/shopify-api';
+import express, { Request, Response } from 'express';
+import { AddHandlersParams, DeliveryMethod, Shopify } from '@shopify/shopify-api';
 
-import {AppConfigInterface} from '../config-types';
-import {ApiAndConfigParams} from '../types';
-import {AppInstallations} from '../app-installations';
-import {deleteAppInstallationHandler} from '../middlewares';
+import { AppConfigInterface } from '../config-types';
+import { ApiAndConfigParams } from '../types';
+import { AppInstallations } from '../app-installations';
+import { deleteAppInstallationHandler } from '../middlewares';
 
 import {
   ProcessWebhooksMiddleware,
   ProcessWebhooksMiddlewareParams,
   WebhookHandlersParam,
 } from './types';
-import {process} from './process';
+import { process } from './process';
 
 export function processWebhooks({
   api,
   config,
 }: ApiAndConfigParams): ProcessWebhooksMiddleware {
-  return function ({webhookHandlers}: ProcessWebhooksMiddlewareParams) {
+  return function ({ webhookHandlers }: ProcessWebhooksMiddlewareParams) {
 
-    console.log("### REDBRAIN PATCH ### removing webhook mount");
-    // mountWebhooks(api, config, webhookHandlers);
+    mountWebhooks(api, config, webhookHandlers);
 
     return [
-      express.text({type: '*/*'}),
+      express.text({ type: '*/*' }),
       async (req: Request, res: Response) => {
         await process({
           req,

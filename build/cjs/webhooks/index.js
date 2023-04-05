@@ -19,8 +19,7 @@ function processWebhooks({
   return function ({
     webhookHandlers
   }) {
-    console.log("### REDBRAIN PATCH ### removing webhook mount");
-    // mountWebhooks(api, config, webhookHandlers);
+    mountWebhooks(api, config, webhookHandlers);
     return [express__default["default"].text({
       type: '*/*'
     }), async (req, res) => {
