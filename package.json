@@ -1,10 +1,10 @@
 {
-  "name": "@redbrainduncan/shopify-app-express",
+  "name": "@shopify/shopify-app-express",
   "version": "1.2.2",
   "description": "Shopify Express Middleware - to simplify the building of Shopify Apps with Express",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Shopify/shopify-app-express.git"
+    "url": "git+https://github.com/RedbrainLtd/shopify-app-express.git"
   },
   "bugs": {
     "url": "https://github.com/Shopify/shopify-app-express/issues"
@@ -30,7 +30,7 @@
     "Storefront API"
   ],
   "dependencies": {
-    "@shopify/shopify-api": "git+https://github.com/redbrainduncan/shopify-api-js.git",
+    "@shopify/shopify-api": "git+https://github.com/RedbrainLtd/shopify-api-js.git",
     "@shopify/shopify-app-session-storage": "^1.1.1",
     "@shopify/shopify-app-session-storage-memory": "^1.0.4",
     "cookie-parser": "^1.4.6",
