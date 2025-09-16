@@ -7,13 +7,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Shopify/shopify-app-js.git",
-    "directory": "packages/apps/shopify-app-express"
+    "url": "git+https://github.com/Redbrainltd/shopify-app-express.git"
   },
   "bugs": {
-    "url": "https://github.com/Shopify/shopify-app-js/issues"
+    "url": "https://github.com/Redbrainltd/shopify-app-express/issues"
   },
-  "homepage": "https://github.com/Shopify/shopify-app-js/tree/main/packages/apps/shopify-app-express",
+  "homepage": "https://github.com/Redbrainltd/shopify-app-express",
   "author": "Shopify Inc.",
   "license": "MIT",
   "main": "./dist/cjs/index.js",
@@ -46,7 +45,7 @@
     "Storefront API"
   ],
   "dependencies": {
-    "@shopify/shopify-api": "github:Redbrainltd/shopify-api-js",
+    "@shopify/shopify-api": "git+https://github.com/RedbrainLtd/shopify-api-js.git",
     "@shopify/shopify-app-session-storage": "^3.0.20",
     "@shopify/shopify-app-session-storage-memory": "^4.0.20",
     "express": "^4.21.2",
