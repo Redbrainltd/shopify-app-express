@@ -1,30 +1,38 @@
 import {
+  ApiVersion,
   ConfigParams as ApiConfigParams,
   Shopify,
   ShopifyRestResources,
 } from '@shopify/shopify-api';
 import {SessionStorage} from '@shopify/shopify-app-session-storage';
 
+// Make apiVersion required while keeping other API config fields optional
+export type ExpressApiConfigParams<
+  Resources extends ShopifyRestResources = ShopifyRestResources,
+> = Partial<ApiConfigParams<Resources>> & {
+  apiVersion: ApiVersion;
+};
+
 export interface AppConfigParams<
-  R extends ShopifyRestResources = any,
-  S extends SessionStorage = SessionStorage,
+  Resources extends ShopifyRestResources = ShopifyRestResources,
+  Storage extends SessionStorage = SessionStorage,
 > {
   auth: AuthConfigInterface;
   webhooks: WebhooksConfigInterface;
-  api?: Partial<ApiConfigParams<R>>;
+  api: ExpressApiConfigParams<Resources>;
   useOnlineTokens?: boolean;
   exitIframePath?: string;
-  sessionStorage?: S;
+  sessionStorage?: Storage;
 }
 
 export interface AppConfigInterface<
-  R extends ShopifyRestResources = any,
-  S extends SessionStorage = SessionStorage,
-> extends Omit<AppConfigParams<R, S>, 'api'> {
+  Resources extends ShopifyRestResources = ShopifyRestResources,
+  Storage extends SessionStorage = SessionStorage,
+> extends Omit<AppConfigParams<Resources, Storage>, 'api'> {
   logger: Shopify['logger'];
   useOnlineTokens: boolean;
   exitIframePath: string;
-  sessionStorage: S;
+  sessionStorage: Storage;
 }
 
 export interface AuthConfigInterface {

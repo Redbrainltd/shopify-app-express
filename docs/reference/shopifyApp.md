@@ -8,7 +8,7 @@ This function creates an object that contains everything an Express app needs to
 
 `ApiConfigParams` | :exclamation: required when not using the Shopify CLI
 
-All values allowed by the `@shopify/shopify-api` package [when calling `shopifyApi`](https://github.com/Shopify/shopify-api-js/blob/main/docs/reference/shopifyApi.md).
+All values allowed by the `@shopify/shopify-api` package [when calling `shopifyApi`](../../../shopify-api/docs/reference/shopifyApi.md).
 
 ### auth
 
@@ -66,7 +66,7 @@ The configuration used to set up this object.
 
 ### api
 
-The object created by the `@shopify/shopify-api` package. See [the API package documentation](https://github.com/Shopify/shopify-api-js#readme) for more details.
+The object created by the `@shopify/shopify-api` package. See [the API package documentation](../../../shopify-api#readme) for more details.
 
 ### [auth](./auth.md)
 
@@ -100,6 +100,12 @@ A function that returns an Express middleware that verifies that the request rec
 `() => RequestHandler`
 
 A function that returns an Express middleware that redirects the user to the app, embedding it into Shopify depending on `api.isEmbeddedApp`.
+
+### [redirectOutOfApp](./redirectOutOfApp.md)
+
+`(RedirectOutOfAppParams) => void`
+
+A function that redirects to any URL at the browser's top level, regardless of where the request originated from.
 
 ## Example
 

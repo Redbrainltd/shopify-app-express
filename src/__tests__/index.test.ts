@@ -1,4 +1,5 @@
 import {
+  ApiVersion,
   FeatureDeprecatedError,
   LogSeverity,
   ShopifyError,
@@ -47,14 +48,18 @@ describe('shopifyApp', () => {
       auth: testConfig.auth,
       webhooks: testConfig.webhooks,
       api: {
+        apiVersion: ApiVersion.July25,
         logger: testConfig.api.logger,
       },
     });
+    const scopes = shopify.api.config.scopes
+      ? shopify.api.config.scopes.toString()
+      : '';
 
     expect(shopify).toBeDefined();
     expect(shopify.api.config.apiKey).toEqual('envKey');
     expect(shopify.api.config.apiSecretKey).toEqual('envSecret');
-    expect(shopify.api.config.scopes.toString()).toEqual('envScope1,envScope2');
+    expect(scopes).toEqual('envScope1,envScope2');
     expect(shopify.api.config.hostName).toEqual('envHost');
     expect(shopify.api.config.hostScheme).toEqual('https');
     expect(shopify.api.config.customShopDomains).toEqual(['*.envCustomDomain']);
@@ -64,14 +69,14 @@ describe('shopifyApp', () => {
   it('properly sets the package in log calls', async () => {
     const shopify = shopifyApp(testConfig);
 
-    await shopify.config.logger.info('test');
+    shopify.config.logger.info('test');
 
     expect(shopify.api.config.logger.log).toHaveBeenCalledWith(
       LogSeverity.Info,
       '[shopify-app/INFO] test',
     );
 
-    await shopify.config.logger.info('test', {extra: 'context'});
+    shopify.config.logger.info('test', {extra: 'context'});
 
     expect(shopify.api.config.logger.log).toHaveBeenCalledWith(
       LogSeverity.Info,
@@ -82,7 +87,7 @@ describe('shopifyApp', () => {
   it('properly logs deprecation messages', async () => {
     const shopify = shopifyApp(testConfig);
 
-    await shopify.config.logger.deprecated('9999.0.0', 'test');
+    shopify.config.logger.deprecated('9999.0.0', 'test');
 
     expect(shopify.api.config.logger.log).toHaveBeenCalledWith(
       LogSeverity.Warning,
@@ -93,8 +98,8 @@ describe('shopifyApp', () => {
   it('throws when deprecation version is reached', async () => {
     const shopify = shopifyApp(testConfig);
 
-    await expect(
+    expect(() =>
       shopify.config.logger.deprecated(SHOPIFY_EXPRESS_LIBRARY_VERSION, 'test'),
-    ).rejects.toThrow(FeatureDeprecatedError);
+    ).toThrow(FeatureDeprecatedError);
   });
 });

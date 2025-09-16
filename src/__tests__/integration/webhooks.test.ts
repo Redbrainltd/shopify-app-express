@@ -1,6 +1,6 @@
 import request from 'supertest';
 import express, {Express} from 'express';
-import {LATEST_API_VERSION, LogSeverity} from '@shopify/shopify-api';
+import {ApiVersion, LogSeverity} from '@shopify/shopify-api';
 
 import {AppInstallations} from '../../app-installations';
 import {
@@ -55,13 +55,6 @@ describe('webhook integration', () => {
           shopify.config.webhooks.path = '/test/webhooks';
 
           app = express();
-
-          // Use a short timeout since everything here should be pretty quick. If you see a `socket hang up` error,
-          // it's probably because the timeout is too short.
-          app.use('*', (_req, res, next) => {
-            res.setTimeout(100);
-            next();
-          });
 
           app.get('/test/auth', shopify.auth.begin());
           app.get(
@@ -126,8 +119,10 @@ describe('webhook integration', () => {
           webhookQueries.forEach((query) =>
             expect({
               method: 'POST',
-              url: `https://${TEST_SHOP}/admin/api/${LATEST_API_VERSION}/graphql.json`,
-              body: expect.stringContaining(query),
+              url: `https://${TEST_SHOP}/admin/api/${ApiVersion.July25}/graphql.json`,
+              body: expect.objectContaining({
+                query: expect.stringContaining(query),
+              }),
             }).toMatchMadeHttpRequest(),
           );
 
@@ -153,7 +148,8 @@ describe('webhook integration', () => {
               TEST_SHOP,
               '{}',
               TEST_WEBHOOK_ID,
-              LATEST_API_VERSION,
+              ApiVersion.July25,
+              undefined,
             );
           }
         });

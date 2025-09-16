@@ -1,6 +1,7 @@
 import request from 'supertest';
 import express from 'express';
 import {
+  BotActivityDetected,
   CookieNotFound,
   DeliveryMethod,
   InvalidOAuthError,
@@ -206,6 +207,23 @@ describe('auth', () => {
         );
       });
 
+      it('fails if the request is detected as a bot', async () => {
+        const errorMessage = 'Test bot detected';
+        callbackMock.mockRejectedValueOnce(
+          new BotActivityDetected(errorMessage),
+        );
+
+        await request(app)
+          .get(`/auth/callback?shop=${TEST_SHOP}&host=${BASE64_HOST}`)
+          .expect(410)
+          .expect(errorMessage);
+
+        expect(shopify.api.config.logger.log as jest.Mock).toHaveBeenCalledWith(
+          LogSeverity.Error,
+          expect.stringContaining(errorMessage),
+        );
+      });
+
       it('borks on unknown errors', async () => {
         const errorMessage = 'Unknown error';
         callbackMock.mockRejectedValueOnce(new Error(errorMessage));
@@ -255,9 +273,9 @@ describe('auth with action after callback', () => {
   });
 
   it('triggers callback', async () => {
-    afterAuth.mockImplementation(async (req, res) => {
+    afterAuth.mockImplementation(async (req, res, next) => {
       expect(res.locals.shopify.session).toEqual(session);
-      await shopify.redirectToShopifyOrAppRoot()(req, res);
+      shopify.redirectToShopifyOrAppRoot()(req, res, next);
     });
 
     const response = await request(app)

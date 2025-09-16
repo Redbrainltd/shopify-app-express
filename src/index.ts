@@ -1,14 +1,12 @@
-import semver from 'semver';
+import {compare} from 'compare-versions';
 import '@shopify/shopify-api/adapters/node';
 import {
   shopifyApi,
   ConfigParams as ApiConfigParams,
-  ShopifyRestResources,
-  LATEST_API_VERSION,
   Shopify,
   FeatureDeprecatedError,
+  ShopifyRestResources,
 } from '@shopify/shopify-api';
-import {SessionStorage} from '@shopify/shopify-app-session-storage';
 import {MemorySessionStorage} from '@shopify/shopify-app-session-storage-memory';
 
 import {SHOPIFY_EXPRESS_LIBRARY_VERSION} from './version';
@@ -29,38 +27,59 @@ import {
   EnsureInstalledMiddleware,
   RedirectToShopifyOrAppRootMiddleware,
 } from './middlewares/types';
+import {redirectOutOfApp} from './redirect-out-of-app';
+import {RedirectOutOfAppFunction} from './types';
 
 export * from './types';
 export * from './auth/types';
 export * from './middlewares/types';
 export * from './webhooks/types';
+export type {AppConfigParams, ExpressApiConfigParams} from './config-types';
+export {ApiVersion} from '@shopify/shopify-api';
 
-export interface ShopifyApp<
-  R extends ShopifyRestResources = any,
-  S extends SessionStorage = SessionStorage,
-> {
-  config: AppConfigInterface<S>;
-  api: Shopify<R>;
+type DefaultedConfigs<Params extends Partial<ApiConfigParams> | undefined> =
+  ApiConfigParams & Params;
+
+type ConfigInterfaceFromParams<
+  Params extends AppConfigParams | Omit<AppConfigParams, 'api'>,
+> = AppConfigInterface<
+  Params extends AppConfigParams
+    ? NonNullable<DefaultedConfigs<Params['api']>['restResources']>
+    : ShopifyRestResources,
+  Params['sessionStorage'] extends undefined
+    ? MemorySessionStorage
+    : NonNullable<Params['sessionStorage']>
+>;
+
+export interface ShopifyApp<Params extends AppConfigParams = AppConfigParams> {
+  config: ConfigInterfaceFromParams<Params>;
+  api: Shopify<
+    DefaultedConfigs<Params['api']>,
+    DefaultedConfigs<Params['api']>['restResources'] & ShopifyRestResources
+  >;
   auth: AuthMiddleware;
   processWebhooks: ProcessWebhooksMiddleware;
   validateAuthenticatedSession: ValidateAuthenticatedSessionMiddleware;
   cspHeaders: CspHeadersMiddleware;
   ensureInstalledOnShop: EnsureInstalledMiddleware;
   redirectToShopifyOrAppRoot: RedirectToShopifyOrAppRootMiddleware;
+  redirectOutOfApp: RedirectOutOfAppFunction;
 }
 
-export function shopifyApp<
-  R extends ShopifyRestResources = any,
-  S extends SessionStorage = SessionStorage,
->(config: AppConfigParams<R, S>): ShopifyApp<R, S> {
+export function shopifyApp<Params extends AppConfigParams>(
+  config: Params,
+): ShopifyApp<Params> {
   const {api: apiConfig, ...appConfig} = config;
 
-  const api = shopifyApi<R>(apiConfigWithDefaults<R>(apiConfig ?? {}));
-  const validatedConfig = validateAppConfig<R, S>(appConfig, api);
+  const api = shopifyApi(apiConfigWithDefaults(apiConfig));
+  const validatedConfig = validateAppConfig(appConfig, api);
 
   return {
     config: validatedConfig,
-    api,
+    api: api as Shopify<
+      DefaultedConfigs<Params['api']>,
+      DefaultedConfigs<Params['api']>['restResources'] & ShopifyRestResources
+    >,
     auth: auth({api, config: validatedConfig}),
     processWebhooks: processWebhooks({api, config: validatedConfig}),
     validateAuthenticatedSession: validateAuthenticatedSession({
@@ -76,15 +95,16 @@ export function shopifyApp<
       api,
       config: validatedConfig,
     }),
+    redirectOutOfApp: redirectOutOfApp({api, config: validatedConfig}),
   };
 }
 
-function apiConfigWithDefaults<R extends ShopifyRestResources>(
-  apiConfig: Partial<ApiConfigParams<R>>,
-): ApiConfigParams<R> {
+function apiConfigWithDefaults<Params extends Partial<ApiConfigParams>>(
+  apiConfig: Params,
+): DefaultedConfigs<Params> {
   let userAgent = `Shopify Express Library v${SHOPIFY_EXPRESS_LIBRARY_VERSION}`;
 
-  if (apiConfig.userAgentPrefix) {
+  if (apiConfig?.userAgentPrefix) {
     userAgent = `${apiConfig.userAgentPrefix} | ${userAgent}`;
   }
 
@@ -96,23 +116,19 @@ function apiConfigWithDefaults<R extends ShopifyRestResources>(
     hostScheme: (process.env.HOST?.split('://')[0] as 'http' | 'https')!,
     hostName: process.env.HOST?.replace(/https?:\/\//, '')!,
     isEmbeddedApp: true,
-    apiVersion: LATEST_API_VERSION,
     ...(process.env.SHOP_CUSTOM_DOMAIN && {
       customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN],
     }),
-    ...apiConfig,
+    ...(apiConfig || {}),
     userAgentPrefix: userAgent,
-  };
+  } as DefaultedConfigs<Params>;
   /* eslint-enable no-process-env */
 }
 
-function validateAppConfig<
-  R extends ShopifyRestResources,
-  S extends SessionStorage,
->(
-  config: Omit<AppConfigParams<R, S>, 'api'>,
+function validateAppConfig<Params extends Omit<AppConfigParams, 'api'>>(
+  config: Params,
   api: Shopify,
-): AppConfigInterface<S> {
+): ConfigInterfaceFromParams<Params> {
   const {sessionStorage, ...configWithoutSessionStorage} = config;
 
   return {
@@ -120,7 +136,8 @@ function validateAppConfig<
     logger: overrideLoggerPackage(api.logger),
     useOnlineTokens: false,
     exitIframePath: '/exitiframe',
-    sessionStorage: sessionStorage ?? new MemorySessionStorage(),
+    sessionStorage: (sessionStorage ??
+      new MemorySessionStorage()) as ConfigInterfaceFromParams<Params>['sessionStorage'],
     ...configWithoutSessionStorage,
     auth: config.auth,
     webhooks: config.webhooks,
@@ -130,29 +147,29 @@ function validateAppConfig<
 function overrideLoggerPackage(logger: Shopify['logger']): Shopify['logger'] {
   const baseContext = {package: 'shopify-app'};
 
-  const warningFunction: Shopify['logger']['warning'] = async (
+  const warningFunction: Shopify['logger']['warning'] = (
     message,
     context = {},
   ) => logger.warning(message, {...baseContext, ...context});
 
   return {
     ...logger,
-    log: async (severity, message, context = {}) =>
+    log: (severity, message, context = {}) =>
       logger.log(severity, message, {...baseContext, ...context}),
-    debug: async (message, context = {}) =>
+    debug: (message, context = {}) =>
       logger.debug(message, {...baseContext, ...context}),
-    info: async (message, context = {}) =>
+    info: (message, context = {}) =>
       logger.info(message, {...baseContext, ...context}),
     warning: warningFunction,
-    error: async (message, context = {}) =>
+    error: (message, context = {}) =>
       logger.error(message, {...baseContext, ...context}),
     deprecated: deprecated(warningFunction),
   };
 }
 
 function deprecated(warningFunction: Shopify['logger']['warning']) {
-  return async function (version: string, message: string): Promise<void> {
-    if (semver.gte(SHOPIFY_EXPRESS_LIBRARY_VERSION, version)) {
+  return function (version: string, message: string): Promise<void> {
+    if (compare(SHOPIFY_EXPRESS_LIBRARY_VERSION, version, '>=')) {
       throw new FeatureDeprecatedError(
         `Feature was deprecated in version ${version}`,
       );

@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 
-import semver from 'semver';
+import {compare} from 'compare-versions';
 import fetchMock, {MockParams} from 'jest-fetch-mock';
-import {LATEST_API_VERSION} from '@shopify/shopify-api';
+import {ApiVersion, ShopifyRestResources} from '@shopify/shopify-api';
 import {MemorySessionStorage} from '@shopify/shopify-app-session-storage-memory';
 
 import {shopifyApp, ShopifyApp} from '../index';
@@ -10,7 +10,10 @@ import {AppConfigParams} from '../config-types';
 import {SHOPIFY_EXPRESS_LIBRARY_VERSION} from '../version';
 
 // eslint-disable-next-line import/no-mutable-exports
-export let testConfig: AppConfigParams & {
+export let testConfig: AppConfigParams<
+  ShopifyRestResources,
+  MemorySessionStorage
+> & {
   api: {
     apiKey: string;
     apiSecretKey: string;
@@ -41,7 +44,8 @@ beforeEach(() => {
       apiKey: 'testApiKey',
       apiSecretKey: 'testApiSecretKey',
       scopes: ['testScope'],
-      apiVersion: LATEST_API_VERSION,
+      apiVersion: ApiVersion.July25,
+      hostScheme: 'https',
       hostName: 'my-test-app.myshopify.io',
       logger: {
         log: jest.fn(),
@@ -54,11 +58,7 @@ beforeEach(() => {
   currentCall = 0;
 });
 
-export type MockBody =
-  | string
-  | {
-      [key: string]: any;
-    };
+export type MockBody = string | Record<string, any>;
 
 interface AssertHttpRequestParams {
   method: string;
@@ -70,7 +70,7 @@ interface AssertHttpRequestParams {
 export function mockShopifyResponse(body: MockBody, init?: MockParams) {
   fetchMock.mockResponse(
     typeof body === 'string' ? body : JSON.stringify(body),
-    init,
+    mockResponseInit(init),
   );
 }
 
@@ -81,11 +81,20 @@ export function mockShopifyResponses(
     ([body, init]) => {
       const bodyString = typeof body === 'string' ? body : JSON.stringify(body);
 
-      return init ? [bodyString, init] : [bodyString, {}];
+      return [bodyString, mockResponseInit(init)];
     },
   );
 
   fetchMock.mockResponses(...parsedResponses);
+}
+
+function mockResponseInit(init?: MockParams): MockParams {
+  const initObj = init ?? {};
+
+  return {
+    ...initObj,
+    headers: {'Content-Type': 'application/json', ...initObj.headers},
+  };
 }
 
 declare global {
@@ -159,7 +168,7 @@ expect.extend({
     return {
       message: () =>
         `Found deprecation limited to version ${version}, please update or remove it.`,
-      pass: semver.lt(SHOPIFY_EXPRESS_LIBRARY_VERSION, version),
+      pass: compare(SHOPIFY_EXPRESS_LIBRARY_VERSION, version, '<'),
     };
   },
 });
@@ -168,7 +177,7 @@ export function validWebhookHeaders(
   topic: string,
   body: string,
   secretKey: string,
-): {[key: string]: string} {
+): Record<string, string> {
   const hmac = createTestHmac(secretKey, body);
 
   return {
@@ -176,7 +185,7 @@ export function validWebhookHeaders(
     'X-Shopify-Shop-Domain': TEST_SHOP,
     'X-Shopify-Hmac-Sha256': hmac,
     'X-Shopify-Webhook-Id': TEST_WEBHOOK_ID,
-    'X-Shopify-Api-Version': LATEST_API_VERSION,
+    'X-Shopify-Api-Version': ApiVersion.July25,
   };
 }
 

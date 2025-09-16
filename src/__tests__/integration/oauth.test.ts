@@ -1,13 +1,11 @@
+import {createSecretKey} from 'crypto';
+
 import request from 'supertest';
 import express, {Express} from 'express';
-import jwt from 'jsonwebtoken';
-import {
-  ConfigParams,
-  LATEST_API_VERSION,
-  LogSeverity,
-} from '@shopify/shopify-api';
+import {ApiVersion, LogSeverity} from '@shopify/shopify-api';
+import {SignJWT} from 'jose';
 
-import {shopifyApp} from '../..';
+import {ShopifyApp, shopifyApp} from '../..';
 import {WebhookHandlersParam} from '../../webhooks/types';
 import {AppInstallations} from '../../app-installations';
 import {
@@ -58,29 +56,31 @@ describe('OAuth integration tests', () => {
         ],
       };
 
-      const afterAuth = jest.fn().mockImplementation(async (req, res, next) => {
-        const shopSessions = await shopify.config.sessionStorage
-          .findSessionsByShop!(TEST_SHOP);
-        const offlineSession = shopSessions[0];
-        expect(offlineSession.isOnline).toBe(false);
+      const afterAuth = jest
+        .fn()
+        .mockImplementation(async (_req, res, next) => {
+          const shopSessions =
+            await shopify.config.sessionStorage.findSessionsByShop!(TEST_SHOP);
+          const offlineSession = shopSessions[0];
+          expect(offlineSession.isOnline).toBe(false);
 
-        if (config.online) {
-          const onlineSession = shopSessions[1];
+          if (config.online) {
+            const onlineSession = shopSessions[1];
 
-          expect(onlineSession.isOnline).toBe(true);
-          expect(res.locals.shopify.session).toEqual(onlineSession);
-        } else {
-          expect(res.locals.shopify.session).toEqual(offlineSession);
-        }
+            expect(onlineSession.isOnline).toBe(true);
+            expect(res.locals.shopify.session).toEqual(onlineSession);
+          } else {
+            expect(res.locals.shopify.session).toEqual(offlineSession);
+          }
 
-        next();
-      });
+          next();
+        });
       const installedMock = jest.fn((_req, res) => res.send('ok'));
       const authedMock = jest.fn((_req, res) => res.send('ok'));
 
       // Create a new instance of the app with the given config
       const url = new URL(config.host);
-      const apiConfig: ConfigParams = {
+      const apiConfig = {
         ...testConfig.api,
         isEmbeddedApp: config.embedded,
         hostScheme: url.protocol.slice(0, -1) as 'http' | 'https',
@@ -101,12 +101,6 @@ describe('OAuth integration tests', () => {
       });
 
       const app = express();
-      // Use a short timeout since everything here should be pretty quick. If you see a `socket hang up` error,
-      // it's probably because the timeout is too short.
-      app.use('*', (_req, res, next) => {
-        res.setTimeout(100);
-        next();
-      });
       app.get('/test/auth', shopify.auth.begin());
       app.get(
         '/test/auth/callback',
@@ -131,7 +125,8 @@ describe('OAuth integration tests', () => {
         TEST_SHOP,
         body,
         TEST_WEBHOOK_ID,
-        LATEST_API_VERSION,
+        ApiVersion.July25,
+        undefined,
       );
 
       await installedRequest(app, config, installedMock);
@@ -210,8 +205,8 @@ async function completeOAuth(
   }
 
   const callbackResponse = await request(app)
-    .get(`/test/auth/callback?${callbackInfo.params.toString()}`)
-    .set('Cookie', callbackInfo.cookies)
+    .get(`/test/auth/callback?${finalCallbackInfo.params.toString()}`)
+    .set('Cookie', finalCallbackInfo.cookies)
     .expect(302);
 
   if (config.embedded) {
@@ -247,9 +242,10 @@ function assertOAuthBeginRedirectUrl(
   expect(redirecUri.pathname).toBe('/test/auth/callback');
 
   expect(url.searchParams.get('client_id')).toEqual(shopify.api.config.apiKey);
-  expect(url.searchParams.get('scope')).toEqual(
-    shopify.api.config.scopes.toString(),
-  );
+  const scopes = shopify.api.config.scopes
+    ? shopify.api.config.scopes.toString()
+    : '';
+  expect(url.searchParams.get('scope')).toEqual(scopes);
   expect(url.searchParams.get('state')).toEqual(expect.stringMatching(/.{15}/));
 
   if (isOnline) {
@@ -338,8 +334,8 @@ function assertOAuthRequests(
   webhookQueries.forEach((query) =>
     expect({
       method: 'POST',
-      url: `https://${TEST_SHOP}/admin/api/${LATEST_API_VERSION}/graphql.json`,
-      body: expect.stringContaining(query),
+      url: `https://${TEST_SHOP}/admin/api/${ApiVersion.July25}/graphql.json`,
+      body: expect.objectContaining({query: expect.stringContaining(query)}),
     }).toMatchMadeHttpRequest(),
   );
 
@@ -412,19 +408,15 @@ async function validSession(
   config: OAuthTestCase,
   mock: jest.Mock,
 ) {
-  const validJWT = jwt.sign(
-    {
-      sub: 1234,
-      aud: shopify.api.config.apiKey,
-      dest: `https://${TEST_SHOP}`,
-    },
-    shopify.api.config.apiSecretKey,
-    {
-      algorithm: 'HS256',
-    },
-  );
+  const validJWT = await new SignJWT({
+    sub: '1234',
+    aud: shopify.api.config.apiKey,
+    dest: `https://${TEST_SHOP}`,
+  })
+    .setProtectedHeader({alg: 'HS256'})
+    .sign(createSecretKey(Buffer.from(shopify.api.config.apiSecretKey)));
 
-  const headers: {[key: string]: string} = {};
+  const headers: Record<string, string> = {};
   if (config.embedded) {
     headers.Authorization = `Bearer ${validJWT}`;
   } else {

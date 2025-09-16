@@ -1,7 +1,9 @@
+import {createSecretKey} from 'crypto';
+
 import request from 'supertest';
 import express, {Express} from 'express';
-import {LATEST_API_VERSION, Session} from '@shopify/shopify-api';
-import jwt from 'jsonwebtoken';
+import {ApiVersion, Session} from '@shopify/shopify-api';
+import {SignJWT} from 'jose';
 
 import {
   createTestHmac,
@@ -19,41 +21,34 @@ describe('validateAuthenticatedSession', () => {
   describe('for embedded apps', () => {
     let validJWT: any;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       shopify.config.auth.path = '/api/auth';
       shopify.config.auth.callbackPath = '/api/auth/callback';
       shopify.api.config.isEmbeddedApp = true;
 
       app = express();
-      // Use a short timeout since everything here should be pretty quick. If you see a `socket hang up` error,
-      // it's probably because the timeout is too short.
-      app.use('*', (_req, res, next) => {
-        res.setTimeout(100);
-        next();
-      });
       app.use('/test/*', shopify.validateAuthenticatedSession());
       app.get('/test/shop', async (req, res) => {
         res.json({data: {shop: {name: req.query.shop}}});
       });
 
-      validJWT = jwt.sign(
-        {
-          dummy: 'data',
-          aud: shopify.api.config.apiKey,
-          dest: `https://${shop}`,
-        },
-        shopify.api.config.apiSecretKey,
-        {
-          algorithm: 'HS256',
-        },
-      );
+      validJWT = await new SignJWT({
+        dummy: 'data',
+        aud: shopify.api.config.apiKey,
+        dest: `https://${shop}`,
+      })
+        .setProtectedHeader({alg: 'HS256'})
+        .sign(createSecretKey(Buffer.from(shopify.api.config.apiSecretKey)));
+      const scopes = shopify.api.config.scopes
+        ? shopify.api.config.scopes.toString()
+        : '';
 
       session = new Session({
         id: sessionId,
         shop,
         state: '123-this-is-a-state',
         isOnline: shopify.config.useOnlineTokens,
-        scope: shopify.api.config.scopes.toString(),
+        scope: scopes,
         expires: undefined,
         accessToken: 'totally-real-access-token',
       });
@@ -145,13 +140,8 @@ describe('validateAuthenticatedSession', () => {
         .get(
           `/test/shop?shop=other-shop.myshopify.io&host=${encodedHost}&embedded=1`,
         )
-        .set('Authorization', `Bearer ${validJWT}`)
         .expect(302);
 
-      const expectedRedirectUriStart = new URL(
-        shopify.config.auth.path,
-        `${shopify.api.config.hostScheme}://${shopify.api.config.hostName}`,
-      );
       const location = new URL(response.header.location, 'https://example.com');
       const locationParams = location.searchParams;
 
@@ -159,7 +149,7 @@ describe('validateAuthenticatedSession', () => {
       expect(locationParams.get('shop')).toBe('other-shop.myshopify.io');
       expect(locationParams.get('host')).toBe(encodedHost);
       expect(locationParams.get('redirectUri')).toEqual(
-        expect.stringMatching(expectedRedirectUriStart.href),
+        expect.stringMatching(shopify.config.auth.path),
       );
     });
 
@@ -175,13 +165,14 @@ describe('validateAuthenticatedSession', () => {
       );
       const location = new URL(response.header.location);
       const locationParams = location.searchParams;
+      const scopes = shopify.api.config.scopes
+        ? shopify.api.config.scopes.toString()
+        : '';
 
       expect(location.hostname).toBe('other-shop.myshopify.io');
       expect(location.pathname).toBe('/admin/oauth/authorize');
       expect(locationParams.get('client_id')).toBe(shopify.api.config.apiKey);
-      expect(locationParams.get('scope')).toBe(
-        shopify.api.config.scopes.toString(),
-      );
+      expect(locationParams.get('scope')).toBe(scopes);
       expect(locationParams.get('redirect_uri')).toEqual(
         expect.stringMatching(expectedRedirectUriStart.href),
       );
@@ -204,22 +195,22 @@ describe('validateAuthenticatedSession', () => {
     });
 
     it('returns a 401 if the session token is invalid', async () => {
-      const invalidJWT = jwt.sign(
-        {
-          dummy: 'data',
-          aud: shopify.api.config.apiKey,
-          dest: `https://${shop}`,
-        },
-        'different-secret-key',
-        {algorithm: 'HS256'},
-      );
+      const invalidJWT = await new SignJWT({
+        dummy: 'data',
+        aud: shopify.api.config.apiKey,
+        dest: `https://${shop}`,
+      })
+        .setProtectedHeader({alg: 'HS256'})
+        .sign(createSecretKey(Buffer.from('different-secret-key')));
 
       const response = await request(app)
         .get('/test/shop?shop=my-shop.myshopify.io')
         .set({Authorization: `Bearer ${invalidJWT}`})
         .expect(401);
 
-      expect(response.error.text).toMatch('Failed to parse session token');
+      expect((response.error as any).text).toMatch(
+        'Failed to parse session token',
+      );
     });
 
     it('returns a 500 if the storage throws an error', async () => {
@@ -232,7 +223,7 @@ describe('validateAuthenticatedSession', () => {
         .set({Authorization: `Bearer ${validJWT}`})
         .expect(500);
 
-      expect(response.error.text).toBe('Storage error');
+      expect((response.error as any).text).toBe('Storage error');
     });
   });
 
@@ -255,13 +246,16 @@ describe('validateAuthenticatedSession', () => {
           sessionId,
         )}`,
       ];
+      const scopes = shopify.api.config.scopes
+        ? shopify.api.config.scopes.toString()
+        : '';
 
       session = new Session({
         id: sessionId,
         shop: 'my-shop.myshopify.io',
         state: '123-this-is-a-state',
         isOnline: shopify.config.useOnlineTokens,
-        scope: shopify.api.config.scopes.toString(),
+        scope: scopes,
         expires: undefined,
         accessToken: 'totally-real-access-token',
       });
@@ -269,7 +263,10 @@ describe('validateAuthenticatedSession', () => {
     });
 
     it('finds a session with the right cookie', async () => {
-      mockShopifyResponse({});
+      mockShopifyResponse({
+        data: {},
+        extensions: {},
+      });
 
       const response = await request(app)
         .get('/test/shop?shop=my-shop.myshopify.io')
@@ -278,7 +275,7 @@ describe('validateAuthenticatedSession', () => {
 
       expect({
         method: 'POST',
-        url: `https://my-shop.myshopify.io/admin/api/${LATEST_API_VERSION}/graphql.json`,
+        url: `https://my-shop.myshopify.io/admin/api/${ApiVersion.July25}/graphql.json`,
       }).toMatchMadeHttpRequest();
 
       expect(response.body).toEqual({
@@ -297,6 +294,23 @@ describe('validateAuthenticatedSession', () => {
         .expect(302);
 
       expect(response.header.location).toBe(`/auth?shop=my-shop.myshopify.io`);
+    });
+
+    it('returns a 403 with the authentication header in XHR requests', async () => {
+      session.expires = new Date('2020-12-31T00:00:00');
+
+      const response = await request(app)
+        .get('/test/shop?shop=my-shop.myshopify.io')
+        .set('Cookie', validCookies)
+        .set('X-Requested-With', 'XMLHttpRequest')
+        .expect(403);
+
+      expect(
+        response.headers['x-shopify-api-request-failure-reauthorize'],
+      ).toBe('1');
+      expect(
+        response.headers['x-shopify-api-request-failure-reauthorize-url'],
+      ).toBe(`${shopify.config.auth.path}?shop=my-shop.myshopify.io`);
     });
   });
 });

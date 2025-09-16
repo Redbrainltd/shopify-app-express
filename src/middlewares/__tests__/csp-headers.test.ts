@@ -15,7 +15,7 @@ const TESTS: {
   [TEST_SHOP, 12345, undefined].forEach((shop) => {
     let expectedCSP = `frame-ancestors 'none';`;
     if (isEmbeddedApp && typeof shop === 'string') {
-      expectedCSP = `frame-ancestors https://${shop} https://admin.shopify.com;`;
+      expectedCSP = `frame-ancestors https://${shop} https://admin.shopify.com https://*.spin.dev https://admin.myshopify.io https://admin.shop.dev;`;
     }
     TESTS.push({shop, isEmbeddedApp, expectedCSP});
   });
@@ -34,12 +34,16 @@ describe('cspHeaders', () => {
       res.send(htmlPage);
     });
 
+    const scopes = shopify.api.config.scopes
+      ? shopify.api.config.scopes.toString()
+      : '';
+
     session = new Session({
       id: '123-this-is-a-session-id',
       shop: TEST_SHOP,
       state: '123-this-is-a-state',
       isOnline: shopify.config.useOnlineTokens,
-      scope: shopify.api.config.scopes.toString(),
+      scope: scopes,
       expires: undefined,
       accessToken: 'totally-real-access-token',
     });

@@ -1,6 +1,6 @@
 import request from 'supertest';
 import express, {Express} from 'express';
-import {LATEST_API_VERSION, LogSeverity, Session} from '@shopify/shopify-api';
+import {ApiVersion, LogSeverity, Session} from '@shopify/shopify-api';
 
 import {
   createTestHmac,
@@ -20,12 +20,15 @@ describe('ensureInstalledOnShop', () => {
     app.get('/test/shop', async (req, res) => {
       res.json({data: {shop: {name: req.query.shop}}});
     });
+    const scopes = shopify.api.config.scopes
+      ? shopify.api.config.scopes.toString()
+      : '';
     session = new Session({
       id: `offline_${TEST_SHOP}`,
       shop: TEST_SHOP,
       state: '123-this-is-a-state',
       isOnline: false,
-      scope: shopify.api.config.scopes.toString(),
+      scope: scopes,
       expires: undefined,
       accessToken: 'totally-real-access-token',
     });
@@ -49,7 +52,7 @@ describe('ensureInstalledOnShop', () => {
       },
     });
     expect(response.headers['content-security-policy']).toEqual(
-      `frame-ancestors https://${TEST_SHOP} https://admin.shopify.com;`,
+      `frame-ancestors https://${TEST_SHOP} https://admin.shopify.com https://*.spin.dev https://admin.myshopify.io https://admin.shop.dev;`,
     );
   });
 
@@ -167,7 +170,10 @@ describe('ensureInstalledOnShop', () => {
       )}`,
     ];
 
-    mockShopifyResponse({});
+    mockShopifyResponse({
+      data: {},
+      extensions: {},
+    });
     await shopify.config.sessionStorage.storeSession(session);
 
     await request(app)
@@ -177,7 +183,7 @@ describe('ensureInstalledOnShop', () => {
 
     expect({
       method: 'POST',
-      url: `https://test-shop.myshopify.io/admin/api/${LATEST_API_VERSION}/graphql.json`,
+      url: `https://test-shop.myshopify.io/admin/api/${ApiVersion.July25}/graphql.json`,
     }).toMatchMadeHttpRequest();
 
     expect(shopify.api.config.logger.log).toHaveBeenCalledWith(
